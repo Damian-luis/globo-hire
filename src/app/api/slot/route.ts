@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { SlotSession, SymbolType } from '../../../types/slot';
+import type { SymbolType } from '../../../types/slot';
 import { store } from '../sessionStore';
 
 const SYMBOLS = [

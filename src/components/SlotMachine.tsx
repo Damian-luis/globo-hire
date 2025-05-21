@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useSlot } from '../context/SlotContext';
+import type { SlotResult } from '../types/slot';
 
 const revealDelays = [1000, 2000, 3000];
 const RESET_SECONDS = 15;
@@ -39,7 +40,7 @@ export default function SlotMachine() {
       const diff = Math.max(0, Math.ceil((resetTime - now) / 1000));
       setResetCounter(diff);
     }
-  }, []);
+  }, [credits]);
 
   useEffect(() => {
     if (credits === 0) {
@@ -66,7 +67,7 @@ export default function SlotMachine() {
       localStorage.removeItem('slot_reset_time');
       setResetCounter(null);
     }
-  }, [credits]);
+  }, [credits, resetTimeout]);
 
 
   useEffect(() => {
@@ -94,7 +95,7 @@ export default function SlotMachine() {
     revealBlocks(rollResult);
   };
 
-  const revealBlocks = (rollResult: any) => {
+  const revealBlocks = (rollResult: SlotResult | undefined) => {
     [0, 1, 2].forEach((i) => {
       setTimeout(() => {
         setRevealed((prev) => {
@@ -142,7 +143,7 @@ export default function SlotMachine() {
 
   const handleCashoutClick = async () => {
     if (!cashoutDisabled && canCashout) {
-      const res: any = await cashout({
+      const res = await cashout({
         credits,
         rolls,
         ended: false,

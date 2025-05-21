@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { SlotSession } from '../../../types/slot';
 import { store } from '../sessionStore';
 
 export async function POST(req: NextRequest) {
@@ -15,7 +14,7 @@ export async function POST(req: NextRequest) {
     store.session = incomingSession;
   }
 
-  let session = store.session;
+  const session = store.session;
   if (!session || session.ended) {
     return NextResponse.json({ error: 'No active session' }, { status: 400 });
   }
