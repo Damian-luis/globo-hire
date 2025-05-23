@@ -3,12 +3,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSlot } from '../context/SlotContext';
 import type { SlotResult } from '../types/slot';
+import Swal from 'sweetalert2';
 
 const revealDelays = [1000, 2000, 3000];
 const RESET_SECONDS = 15;
 
 export default function SlotMachine() {
-  const { credits, rolls, result, loading, roll, cashout, addReward, cashedOut, error } = useSlot();
+  const slot = useSlot();
+  const { result, loading, roll, cashout, addReward, error } = slot;
+  const [credits, setCredits] = useState(slot.credits);
+  const [rolls, setRolls] = useState(slot.rolls);
   const [revealed, setRevealed] = useState([false, false, false]);
   const [canCashout, setCanCashout] = useState(false);
   const [showReward, setShowReward] = useState(false);
@@ -19,9 +23,25 @@ export default function SlotMachine() {
   const [wallet, setWallet] = useState(0);
   const [resetTimeout, setResetTimeout] = useState<NodeJS.Timeout | null>(null);
   const [resetCounter, setResetCounter] = useState<number | null>(null);
+  const [cashedOut, setCashedOut] = useState(slot.cashedOut);
   const ambienceRef = useRef<HTMLAudioElement>(null);
   const winningRef = useRef<HTMLAudioElement | null>(null);
+  const prevCreditsRef = useRef<number>(credits);
 
+  useEffect(() => {
+    const savedCredits = localStorage.getItem('slot_credits');
+    const savedWallet = localStorage.getItem('slot_wallet');
+    if (savedCredits !== null) setCredits(Number(savedCredits));
+    if (savedWallet !== null) setWallet(Number(savedWallet));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('slot_credits', String(credits));
+  }, [credits]);
+
+  useEffect(() => {
+    localStorage.setItem('slot_wallet', String(wallet));
+  }, [wallet]);
 
   useEffect(() => {
     if (ambienceStarted && ambienceRef.current) {
@@ -30,7 +50,6 @@ export default function SlotMachine() {
       ambienceRef.current.play().catch(() => {});
     }
   }, [ambienceStarted]);
-
 
   useEffect(() => {
     const savedReset = localStorage.getItem('slot_reset_time');
@@ -43,7 +62,7 @@ export default function SlotMachine() {
   }, [credits]);
 
   useEffect(() => {
-    if (credits === 0) {
+    if (prevCreditsRef.current > 0 && credits === 0 && wallet === 0) {
       const resetTime = Date.now() + RESET_SECONDS * 1000;
       localStorage.setItem('slot_reset_time', resetTime.toString());
       setResetCounter(RESET_SECONDS);
@@ -61,14 +80,14 @@ export default function SlotMachine() {
         window.location.reload();
       }, RESET_SECONDS * 1000);
       setResetTimeout(timeout);
-    } else if (resetTimeout) {
-      clearTimeout(resetTimeout);
+    } else if (credits > 0 && prevCreditsRef.current === 0) {
+      if (resetTimeout) clearTimeout(resetTimeout);
       setResetTimeout(null);
       localStorage.removeItem('slot_reset_time');
       setResetCounter(null);
     }
-  }, [credits, resetTimeout]);
-
+    prevCreditsRef.current = credits;
+  }, [credits, resetTimeout, wallet]);
 
   useEffect(() => {
     if (resetCounter === null) return;
@@ -79,7 +98,65 @@ export default function SlotMachine() {
     return () => clearInterval(interval);
   }, [resetCounter]);
 
+  useEffect(() => { setCredits(slot.credits); }, [slot.credits]);
+  useEffect(() => { setRolls(slot.rolls); }, [slot.rolls]);
+  useEffect(() => { setCashedOut(slot.cashedOut); }, [slot.cashedOut]);
+
+
+  const swalCustomClass = {
+    popup: 'rounded-xl bg-gray-900 text-yellow-400 border-4 border-yellow-400',
+    title: 'text-3xl font-extrabold text-yellow-400',
+    htmlContainer: 'text-lg text-white',
+    confirmButton: 'bg-yellow-400 text-black font-bold px-6 py-2 rounded-lg mr-2',
+    cancelButton: 'bg-gray-700 text-white font-bold px-6 py-2 rounded-lg',
+  };
+
+  const handleWalletClick = () => {
+    Swal.fire({
+      title: 'Wallet',
+      html: `
+        <div class="flex flex-col items-center gap-2 mt-4">
+          <div class="text-lg text-black">
+            <span class="font-semibold">Wallet credits:</span>
+            <span class="font-bold text-yellow-400 ml-2">${wallet}</span>
+          </div>
+          <div class="text-lg text-black">
+            <span class="font-semibold">Game credits:</span>
+            <span class="font-bold text-yellow-400 ml-2">${credits}</span>
+          </div>
+        </div>
+      `,
+      customClass: swalCustomClass,
+      confirmButtonText: 'Close',
+      buttonsStyling: false,
+    });
+  };
+
   const handleRoll = async () => {
+    if (credits <= 0 && wallet > 0) {
+      const result = await Swal.fire({
+        title: 'Reload credits?',
+        text: `You have ${wallet} credits in your wallet. Do you want to reload them to play?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, reload',
+        cancelButtonText: 'No',
+        customClass: swalCustomClass,
+        buttonsStyling: false,
+      });
+      if (result.isConfirmed) {
+        setCredits(wallet);
+        setWallet(0);
+        setCanCashout(false);
+        setShowReward(false);
+        setCashoutPos(null);
+        setCashoutDisabled(false);
+        setCashedOut(false);
+        return;
+      } else {
+        return;
+      }
+    }
     setAmbienceStarted(true);
     setRevealed([false, false, false]);
     setCanCashout(false);
@@ -106,12 +183,12 @@ export default function SlotMachine() {
         if (i === 2) {
           setTimeout(() => {
             const isWin = !!(rollResult && rollResult.reward > 0);
-            setCanCashout(isWin);
+            setCanCashout(isWin && rolls + 1 >= 2);
             setShowReward(isWin);
             setRollDisabled(false);
             if (isWin && rollResult) {
               winningRef.current = new Audio('/winning.mp3');
-              winningRef.current.volume = 0.7;
+              winningRef.current.volume = 0.2;
               winningRef.current.play().catch(() => {});
               addReward(rollResult.reward); 
             }
@@ -151,13 +228,19 @@ export default function SlotMachine() {
       });
       if (res && typeof res.cashedOut === 'number' && res.cashedOut > 0) {
         setWallet((w) => w + res.cashedOut);
+        setRevealed([false, false, false]);
+        setCanCashout(false);
+        setShowReward(false);
+        setCashoutPos(null);
+        setCashoutDisabled(false);
+        setRollDisabled(false);
+        setCashedOut(false);
+      } else {
+        setCanCashout(false);
+        setCashoutPos(null);
+        setCashoutDisabled(false);
+        setRollDisabled(false);
       }
-      setRevealed([false, false, false]);
-      setCanCashout(false);
-      setShowReward(false);
-      setCashoutPos(null);
-      setCashoutDisabled(false);
-      setRollDisabled(false);
     }
   };
 
@@ -178,10 +261,15 @@ export default function SlotMachine() {
   };
 
   const WalletIcon = (
-    <div className="fixed top-6 right-6 z-50 flex items-center gap-2 bg-gray-900/90 px-4 py-2 rounded-full shadow-lg border-2 border-yellow-400">
+    <button
+      type="button"
+      onClick={handleWalletClick}
+      className="fixed top-6 right-6 z-50 flex items-center gap-2 bg-gray-900/90 px-4 py-2 rounded-full shadow-lg border-2 border-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+      title="Show wallet details"
+    >
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="feather feather-credit-card"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
       <span className="text-yellow-300 font-bold text-lg">{wallet}</span>
-    </div>
+    </button>
   );
 
   const cashoutButtonStyle = canCashout && cashoutPos
@@ -210,12 +298,12 @@ export default function SlotMachine() {
         <button
           className="bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-2 px-6 rounded-lg shadow-lg disabled:opacity-50"
           onClick={handleRoll}
-          disabled={loading || cashedOut || credits <= 0 || rollDisabled || resetCounter !== null}
+          disabled={loading || rollDisabled || resetCounter !== null || (credits <= 0 && wallet <= 0)}
         >
           {rolls === 0 ? 'Start' : 'Roll'}
         </button>
         <button
-          className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg disabled:opacity-50"
+          className={`bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg disabled:bg-green-700 disabled:text-gray-300 disabled:cursor-not-allowed`}
           style={cashoutButtonStyle}
           onMouseEnter={canCashout ? handleCashoutHover : undefined}
           onClick={handleCashoutClick}
@@ -228,7 +316,7 @@ export default function SlotMachine() {
         <div className="text-lg text-white">Credits: <span className="font-bold">{credits}</span></div>
         <div className="text-lg text-white">Rolls: <span className="font-bold">{rolls}</span></div>
       </div>
-      {credits === 0 && (
+      {credits === 0 && wallet === 0 && (
         <div className="text-red-400 font-bold mt-2">
           No credits left. You can try again in {resetCounter ?? RESET_SECONDS} seconds...
         </div>
@@ -236,7 +324,7 @@ export default function SlotMachine() {
       {result && result.reward > 0 && showReward && (
         <div className="text-2xl text-yellow-300 font-bold mt-2">+{result.reward} credits!</div>
       )}
-      {cashedOut && (
+      {cashedOut && credits === 0 && wallet === 0 && (
         <div className="text-2xl text-green-400 font-bold mt-2">Cashed out!</div>
       )}
       {error && error !== 'No active session' && (
