@@ -102,6 +102,13 @@ export default function SlotMachine() {
   useEffect(() => { setRolls(slot.rolls); }, [slot.rolls]);
   useEffect(() => { setCashedOut(slot.cashedOut); }, [slot.cashedOut]);
 
+  useEffect(() => {
+    if (rolls >= 2 && credits > 0) {
+      setCanCashout(true);
+    } else {
+      setCanCashout(false);
+    }
+  }, [rolls, credits]);
 
   const swalCustomClass = {
     popup: 'rounded-xl bg-gray-900 text-yellow-400 border-4 border-yellow-400',
@@ -183,7 +190,6 @@ export default function SlotMachine() {
         if (i === 2) {
           setTimeout(() => {
             const isWin = !!(rollResult && rollResult.reward > 0);
-            setCanCashout(isWin && rolls + 1 >= 2);
             setShowReward(isWin);
             setRollDisabled(false);
             if (isWin && rollResult) {
